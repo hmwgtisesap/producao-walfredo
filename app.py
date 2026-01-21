@@ -2,87 +2,101 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
+import traceback
 
-# Configuração da Página
-st.set_page_config(page_title="TI - Walfredo Gurguel", layout="wide", page_icon="🏥")
+# 1. CONFIGURAÇÕES INICIAIS
+st.set_page_config(page_title="TI - Produção Hospitalar", layout="wide")
 
-# Cabeçalho Visual
-st.markdown(f"""
-    <div style="background-color:#003366;padding:20px;border-radius:10px">
-    <h1 style="color:white;text-align:center;margin:0;">HOSPITAL MONSENHOR WALFREDO GURGUEL</h1>
-    <p style="color:white;text-align:center;font-size:18px;margin:5px;">Produção de Tecnologia da Informação (TI)</p>
-    </div>
-    """, unsafe_allow_html=True)
+# Conexão (Busca automaticamente do secrets.toml ou do painel do Streamlit Cloud)
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Lista de Setores
-SETORES = sorted([
-    "ADM", "ALMOXARIFADO", "ARQUIVO", "ATENDIMENTO CLINICO", "BANCO DE SANGUE", 
-    "CAF", "CCIH", "CEDEQ", "CENTRAL DE MATERIAIS", "CENTRAL TELEFONICA", "CENTRO CIRURGICO", 
-    "CEQUIP", "CLASSIFICACAO DE RISCO", "CLINICA MEDICA", "CME", "COMPRAS", "CONTRATOS", 
-    "CTQ", "DIRECAO GERAL", "DIV. FINANCEIRA", "DIV. GESTAO DE PESSOAS (RH)", "DIV. MATERIAIS", 
-    "DIV. NUTRICAO", "DIV. SERVICOS GERAIS", "ECG", "EMNT", "EPIDEMIOLOGIA", "FARMACIA CENTRAL", 
-    "FATURAMENTO", "HEMODIALISE", "LABORATORIO", "LAVANDERIA", "MANUTENCAO", "NIR", "NULIC", 
-    "ORTOPEDIA", "OUVIDORIA", "PEDIATRIA", "POLITRAUMA", "RAIO-X", "SADT", "SAME", 
-    "SERVICO SOCIAL", "TI (TECNOLOGIA DA INFORMACAO)", "TOMOGRAFIA", "UAVC", "UCI", 
-    "URGENCIA PEDIATRICA", "UTI GERAL 1", "UTI GERAL 2", "UTI PEDIATRICA"
-])
-
+# Listas auxiliares
+SETORES = sorted(["ADM", "ALMOXARIFADO", "CENTRO CIRURGICO", "TI", "UTI GERAL", "PRONTO SOCORRO", "SAME", "FARMACIA"])
 TECNICOS = ["Thiago", "Italo", "Ulisses", "Katriel", "Luandson"]
 
-# Conexão com a planilha
-conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
+# 2. INTERFACE
+st.title("🏥 Sistema de Produção de TI")
+aba = st.sidebar.radio("Menu", ["Registrar Atividade", "Relatório Mensal"])
 
-aba = st.sidebar.radio("Navegar por:", ["🚀 Registrar Chamado", "📊 Relatório de Produção"])
-
-if aba == "🚀 Registrar Chamado":
-    st.subheader("📝 Lançar Novo Atendimento")
+if aba == "Registrar Atividade":
+    st.header("🚀 Nova Atividade")
     
-    with st.form("form_dados", clear_on_submit=True):
+    with st.form("form_registro", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            tecnico = st.selectbox("Quem atendeu?", TECNICOS)
+            tecnico = st.selectbox("Técnico", TECNICOS)
+            setor = st.selectbox("Setor", SETORES)
         with col2:
-            setor = st.selectbox("Qual o setor?", SETORES)
+            data_manual = st.date_input("Data do Serviço", datetime.now())
             
-        descricao = st.text_area("O que foi realizado?", placeholder="Ex: Manutenção de ponto de rede.")
+        descricao = st.text_area("Descrição do Serviço (Pode repetir 'teste' se necessário)")
         
-        btn_enviar = st.form_submit_button("✅ Salvar Produção")
-        
-        if btn_enviar:
-            if not descricao:
-                st.warning("Por favor, descreva o serviço.")
-            else:
-                agora = datetime.now()
-                # DataFrame com os nomes exatos das colunas da sua planilha 
-                novo_registro = pd.DataFrame([{
-                    "Data": agora.strftime("%d/%m/%Y %H:%M"),
-                    "Mes": agora.strftime("%m - %B"),
-                    "Ano": agora.year,
-                    "Tecnico": tecnico,
-                    "Setor": setor,
-                    "Descricao": descricao
-                }])
-                
-                try:
-                    # Lê a aba dados e anexa o novo dado 
-                    df_atual = conn.read(worksheet="dados")
-                    df_final = pd.concat([df_atual, novo_registro], ignore_index=True)
-                    conn.update(worksheet="dados", data=df_final)
-                    st.success("Atendimento registrado com sucesso!")
-                except Exception as e:
-                    st.error(f"Erro ao salvar: {e}. Verifique se você é Editor da planilha.")
+        btn_salvar = st.form_submit_button("Salvar na Planilha")
 
-else:
-    st.subheader("📊 Resumo Mensal")
+        if btn_salvar:
+            if not descricao:
+                st.warning("Preencha a descrição.")
+            else:
+                try:
+                    # --- O PULO DO GATO PARA NÃO SOBRESCREVER ---
+                    # Lemos a planilha inteira primeiro (ttl=0 é vital aqui)
+                    df_antigo = conn.read(worksheet="dados", ttl=0)
+                    
+                    # Criamos a linha nova
+                    agora = datetime.now()
+                    nova_linha = pd.DataFrame([{
+                        "Data": data_manual.strftime("%d/%m/%Y"),
+                        "Mes": data_manual.strftime("%m - %B"), # Ex: 01 - January
+                        "Ano": data_manual.year,
+                        "Tecnico": tecnico,
+                        "Setor": setor,
+                        "Descricao": descricao
+                    }])
+                    
+                    # Unimos o antigo com o novo (Append)
+                    df_final = pd.concat([df_antigo, nova_linha], ignore_index=True)
+                    
+                    # Atualizamos a planilha com a lista completa
+                    conn.update(worksheet="dados", data=df_final)
+                    
+                    st.success("Atividade gravada com sucesso!")
+                except Exception:
+                    st.error("Erro técnico ao salvar:")
+                    st.code(traceback.format_exc())
+
+elif aba == "Relatório Mensal":
+    st.header("📊 Resumo de Produtividade")
+    
     try:
-        df = conn.read(worksheet="dados")
+        # Lê os dados mais recentes
+        df = conn.read(worksheet="dados", ttl=0)
+        
         if not df.empty:
-            mes_f = st.selectbox("Selecione o Mês:", sorted(df['Mes'].unique()))
-            df_mes = df[df['Mes'] == mes_f]
-            st.metric("Total de Atendimentos", len(df_mes))
+            # Filtro de Mês
+            meses_disponiveis = sorted(df['Mes'].unique(), reverse=True)
+            mes_selecionado = st.selectbox("Selecione o Mês para o Relatório", meses_disponiveis)
+            
+            # Filtragem do DataFrame
+            df_mes = df[df['Mes'] == mes_selecionado]
+            
+            # Indicadores Rápidos
+            c1, c2 = st.columns(2)
+            c1.metric("Total de Chamados no Mês", len(df_mes))
+            c2.metric("Setor mais atendido", df_mes['Setor'].mode()[0] if not df_mes.empty else "-")
+            
+            # Gráficos
+            st.subheader("Produção por Técnico")
+            st.bar_chart(df_mes['Tecnico'].value_counts())
+            
+            st.subheader("Distribuição por Setor")
             st.bar_chart(df_mes['Setor'].value_counts())
-            with st.expander("Detalhes"):
-                st.table(df_mes['Tecnico'].value_counts().reset_index(name='Qtd'))
-                st.dataframe(df_mes)
-    except:
-        st.info("Aguardando registros...")
+            
+            # Tabela detalhada
+            with st.expander("Ver lista completa de atividades"):
+                st.dataframe(df_mes, use_container_width=True)
+        else:
+            st.info("A planilha ainda não possui dados registrados.")
+            
+    except Exception:
+        st.error("Não foi possível gerar o relatório. Verifique se a aba 'dados' existe e tem cabeçalhos.")
+        st.code(traceback.format_exc())
