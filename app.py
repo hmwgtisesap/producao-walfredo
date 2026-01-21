@@ -37,7 +37,7 @@ aba = st.sidebar.radio("Navegar por:", ["🚀 Registrar Chamado", "📊 Relatór
 if aba == "🚀 Registrar Chamado":
     st.subheader("📝 Lançar Novo Atendimento")
     
-    with st.form("form_producao", clear_on_submit=True):
+    with st.form("form_dados", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             tecnico = st.selectbox("Quem atendeu?", TECNICOS)
@@ -64,10 +64,10 @@ if aba == "🚀 Registrar Chamado":
                 }])
                 
                 try:
-                    # Lê a aba Producao e anexa o novo dado 
-                    df_atual = conn.read(worksheet="Producao")
+                    # Lê a aba dados e anexa o novo dado 
+                    df_atual = conn.read(worksheet="dados")
                     df_final = pd.concat([df_atual, novo_registro], ignore_index=True)
-                    conn.update(worksheet="Producao", data=df_final)
+                    conn.update(worksheet="dados", data=df_final)
                     st.success("Atendimento registrado com sucesso!")
                 except Exception as e:
                     st.error(f"Erro ao salvar: {e}. Verifique se você é Editor da planilha.")
@@ -75,7 +75,7 @@ if aba == "🚀 Registrar Chamado":
 else:
     st.subheader("📊 Resumo Mensal")
     try:
-        df = conn.read(worksheet="Producao")
+        df = conn.read(worksheet="dados")
         if not df.empty:
             mes_f = st.selectbox("Selecione o Mês:", sorted(df['Mes'].unique()))
             df_mes = df[df['Mes'] == mes_f]
