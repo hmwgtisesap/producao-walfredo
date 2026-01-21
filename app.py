@@ -30,7 +30,7 @@ SETORES = sorted([
 TECNICOS = ["Thiago", "Italo", "Ulisses", "Katriel", "Luandson"]
 
 # Conexão com a planilha
-conn = st.connection("gsheets", type=GSheetsConnection)
+conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
 
 aba = st.sidebar.radio("Navegar por:", ["🚀 Registrar Chamado", "📊 Relatório de Produção"])
 
